@@ -1,5 +1,6 @@
 """네트워크 트래픽 분석 모듈 — 의심 연결, 과다 연결, 알려진 악성 포트 탐지"""
 import socket
+import subprocess
 from collections import Counter, defaultdict
 from datetime import datetime
 
@@ -8,6 +9,27 @@ import psutil
 from config.settings import (
     DANGEROUS_OPEN_PORTS, SUSPICIOUS_CONNECTION_COUNT, FOREIGN_LISTEN_THRESHOLD
 )
+
+
+def _fw_blocked_inbound_ports() -> set[int]:
+    """Windows 방화벽에서 Inbound Block 규칙이 적용된 포트 번호 집합을 반환합니다."""
+    try:
+        r = subprocess.run(
+            ['powershell', '-NoProfile', '-Command',
+             'Get-NetFirewallRule -Enabled True -Action Block -Direction Inbound '
+             '| Get-NetFirewallPortFilter '
+             '| Select-Object -ExpandProperty LocalPort'],
+            capture_output=True, text=True, timeout=15,
+            creationflags=subprocess.CREATE_NO_WINDOW,
+        )
+        ports: set[int] = set()
+        for line in r.stdout.splitlines():
+            line = line.strip()
+            if line.isdigit():
+                ports.add(int(line))
+        return ports
+    except Exception:
+        return set()
 
 MODULE = 'network'
 
@@ -109,6 +131,7 @@ def analyze():
 
     # ── 외부 노출된 위험 포트 리슨 탐지 (중복 제거: 포트번호 기준) ──
     listen_conns = [c for c in connections if c.status == psutil.CONN_LISTEN]
+    fw_blocked    = _fw_blocked_inbound_ports()
     reported_ports: set = set()
     for c in listen_conns:
         lport = c.laddr.port
@@ -123,11 +146,29 @@ def analyze():
                     pname = psutil.Process(c.pid).name() if c.pid else 'unknown'
                 except Exception:
                     pname = 'unknown'
+                is_blocked = lport in fw_blocked
+                if is_blocked:
+                    actual_sev   = 'low'
+                    title        = f'위험 포트 (방화벽 차단됨): {lport}/{service}'
+                    description  = (f'포트 {lport}({service})가 수신 대기 중이나 '
+                                    f'Windows 방화벽 Inbound Block 규칙이 적용되어 있습니다.')
+                    extra_note   = ('✅ 방화벽 차단 규칙 확인됨 — 외부 접근 차단 중\n'
+                                    f'원본 위험도: {sev} / {note}\n\n'
+                                    '포트를 완전히 닫으려면:\n'
+                                    'Stop-Service LanmanServer -Force\n'
+                                    'Set-Service LanmanServer -StartupType Disabled')
+                else:
+                    actual_sev   = sev
+                    title        = f'위험 포트 외부 노출: {lport}/{service}'
+                    description  = (f'포트 {lport}({service})가 모든 인터페이스에 '
+                                    f'노출되어 있습니다. {note}')
+                    extra_note   = note
                 findings.append(_finding(
-                    fid, f'위험 포트 외부 노출: {lport}/{service}', sev,
-                    f'포트 {lport}({service})가 모든 인터페이스에 노출되어 있습니다. {note}',
-                    {'포트': lport, '서비스': service, '바인딩': laddr, '프로세스': pname},
-                    note,
+                    fid, title, actual_sev, description,
+                    {'포트': lport, '서비스': service, '바인딩': laddr,
+                     '프로세스': pname,
+                     '방화벽 차단': '✅ Block Inbound 규칙 적용됨' if is_blocked else '❌ 차단 규칙 없음'},
+                    extra_note,
                 ))
                 fid += 1
                 reported_ports.add(lport)
