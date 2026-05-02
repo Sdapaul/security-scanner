@@ -166,22 +166,41 @@ def check():
         ))
         fid += 1
 
-    # ── 공유 폴더 목록 ────────────────────────────────────────────
-    share_out = run_cmd(['net', 'share'], timeout=5)
-    if share_out:
-        lines = [l.strip() for l in share_out.splitlines() if l.strip()]
-        suspicious = [
-            l.split()[0] for l in lines
-            if l.split() and not any(w in l.upper() for w in ['C$', 'ADMIN$', 'IPC$', 'PRINT$', 'SHARE NAME', '---'])
-        ]
-        if suspicious:
-            findings.append(_finding(
-                fid, '사용자 정의 공유 폴더 탐지', 'medium',
-                '관리용 기본 공유 이외의 공유 폴더가 존재합니다.',
-                {'공유 목록': suspicious},
-                '불필요한 공유를 제거(`net share 이름 /delete`)하고 공유 권한을 최소화하세요.',
-            ))
-            fid += 1
+    # ── 공유 폴더 목록 (LanmanServer 서비스 실행 중일 때만) ──────
+    lanman_running = False
+    try:
+        import psutil as _ps
+        svc = _ps.win_service_get('LanmanServer')
+        lanman_running = (svc.status() == 'running')
+    except Exception:
+        pass
+
+    if lanman_running:
+        share_out = run_cmd(['net', 'share'], timeout=5)
+        if share_out:
+            lines = [l.strip() for l in share_out.splitlines() if l.strip()]
+            suspicious = [
+                l.split()[0] for l in lines
+                if l.split() and not any(w in l.upper() for w in
+                                         ['C$', 'ADMIN$', 'IPC$', 'PRINT$', 'SHARE NAME', '---'])
+            ]
+            if suspicious:
+                findings.append(_finding(
+                    fid, '사용자 정의 공유 폴더 탐지', 'medium',
+                    '관리용 기본 공유 이외의 공유 폴더가 존재합니다.',
+                    {'공유 목록': suspicious},
+                    '불필요한 공유를 제거(`net share 이름 /delete`)하고 공유 권한을 최소화하세요.',
+                ))
+                fid += 1
+    else:
+        findings.append(_finding(
+            fid, 'SMB 서버(LanmanServer) 서비스 중지됨', 'info',
+            'LanmanServer 서비스가 중지되어 있어 네트워크 파일 공유가 비활성화된 상태입니다.',
+            {'서비스': 'LanmanServer', '상태': '중지됨 (Disabled)'},
+            '의도적으로 비활성화한 경우 정상입니다. 파일 공유가 필요하면:\n'
+            'Start-Service LanmanServer',
+        ))
+        fid += 1
 
     # ── 게스트 계정 ───────────────────────────────────────────────
     guest_out = run_cmd(['net', 'user', 'guest'], timeout=5)
