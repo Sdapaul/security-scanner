@@ -1,0 +1,1259 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>보안 스캐너 제어판</title>
+<style>
+/* ── 기본 리셋 & 변수 ─────────────────────────────────────── */
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0b1220;
+  --sidebar:#0d1b2e;
+  --card:#131f33;
+  --card2:#1a2840;
+  --border:#1e3050;
+  --text:#dde6f0;
+  --muted:#6b82a0;
+  --accent:#3b82f6;
+  --accent2:#1d4ed8;
+  --green:#22c55e;
+  --orange:#f97316;
+  --red:#ef4444;
+  --yellow:#eab308;
+  --c-critical:#ef4444;
+  --c-high:#f97316;
+  --c-medium:#eab308;
+  --c-low:#3b82f6;
+  --c-info:#6b82a0;
+  --term-bg:#070d18;
+  --term-text:#4ade80;
+  --sidebar-w:265px;
+  --pipeline-w:175px;
+  --header-h:56px;
+}
+
+body{font-family:"Segoe UI","Malgun Gothic",system-ui,sans-serif;
+     background:var(--bg);color:var(--text);height:100vh;overflow:hidden;display:flex;flex-direction:column}
+
+/* ── 헤더 ────────────────────────────────────────────────── */
+.header{height:var(--header-h);background:var(--sidebar);
+  border-bottom:1px solid var(--border);display:flex;align-items:center;
+  padding:0 1.2rem;gap:1rem;flex-shrink:0;z-index:100}
+.header-logo{display:flex;align-items:center;gap:.6rem;font-size:.95rem;font-weight:700;color:#fff;white-space:nowrap}
+.header-logo svg{width:20px;height:20px;flex-shrink:0}
+.header-spacer{flex:1;min-width:.5rem}
+.status-badge{display:flex;align-items:center;gap:.4rem;padding:.3rem .8rem;
+  border-radius:20px;font-size:.78rem;font-weight:600;border:1px solid;transition:.3s}
+.status-badge.idle{color:var(--muted);border-color:var(--border);background:rgba(107,130,160,.1)}
+.status-badge.running{color:var(--green);border-color:var(--green);background:rgba(34,197,94,.1)}
+.status-badge.completed{color:var(--accent);border-color:var(--accent);background:rgba(59,130,246,.1)}
+.status-badge.error,.status-badge.stopped{color:var(--red);border-color:var(--red);background:rgba(239,68,68,.1)}
+.pulse{width:8px;height:8px;border-radius:50%;background:currentColor;animation:pulse 1.2s infinite}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(.85)}}
+.header-time{font-size:.78rem;color:var(--muted)}
+
+/* ── 레이아웃 ────────────────────────────────────────────── */
+.layout{display:flex;flex:1;overflow:hidden}
+
+/* ── 사이드바 ────────────────────────────────────────────── */
+.sidebar{width:var(--sidebar-w);background:var(--sidebar);
+  border-right:1px solid var(--border);display:flex;flex-direction:column;overflow-y:auto;flex-shrink:0}
+.sidebar::-webkit-scrollbar{width:4px}
+.sidebar::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+
+.sb-section{padding:.7rem 1rem .7rem .9rem;border-bottom:1px solid var(--border)}
+.sb-title{font-size:.7rem;font-weight:700;color:var(--muted);text-transform:uppercase;
+  letter-spacing:.08em;margin-bottom:.6rem}
+
+/* 모듈 카드 */
+.mod-card{display:flex;align-items:center;gap:.4rem;padding:.5rem .6rem .5rem .55rem;
+  border-radius:8px;margin-bottom:.3rem;cursor:pointer;transition:.15s;
+  border:1px solid transparent}
+.mod-card:hover{background:rgba(59,130,246,.07);border-color:var(--border)}
+.mod-card.active{background:rgba(59,130,246,.1);border-color:rgba(59,130,246,.3)}
+.mod-icon{width:28px;height:28px;border-radius:6px;background:var(--card2);
+  display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.mod-icon svg{width:14px;height:14px;stroke:var(--muted);fill:none;
+  stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.mod-card.active .mod-icon svg{stroke:var(--accent)}
+.mod-info{flex:1;min-width:0}
+.mod-name{font-size:.82rem;font-weight:600;color:var(--text);white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
+.mod-desc{font-size:.68rem;color:var(--muted);margin-top:.1rem;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mod-status-dot{width:8px;height:8px;border-radius:50%;background:var(--border);flex-shrink:0;transition:.3s;border:1px solid transparent}
+.mod-status-dot.running{background:var(--green);border-color:rgba(34,197,94,.4);animation:pulse 1s infinite}
+.mod-status-dot.done{background:var(--accent);border-color:rgba(59,130,246,.4)}
+.mod-status-dot.error{background:var(--red);border-color:rgba(239,68,68,.4)}
+.mod-count{font-size:.68rem;font-weight:600;color:var(--muted);
+  background:var(--card2);padding:.1rem .35rem;border-radius:4px;flex-shrink:0}
+
+/* 토글 스위치 */
+.toggle-wrap{flex-shrink:0;width:36px;height:20px}
+.toggle{position:relative;width:36px;height:20px;cursor:pointer;display:block}
+.toggle input{opacity:0;width:0;height:0;position:absolute}
+.toggle-slider{position:absolute;inset:0;background:#2a3a52;border-radius:10px;transition:.25s}
+.toggle-slider:before{content:'';position:absolute;width:14px;height:14px;
+  background:#fff;border-radius:50%;top:3px;left:3px;transition:.25s}
+input:checked+.toggle-slider{background:var(--accent)}
+input:checked+.toggle-slider:before{transform:translateX(16px)}
+input:disabled+.toggle-slider{opacity:.4;cursor:not-allowed}
+
+/* 전체 ON/OFF 버튼 */
+.bulk-btns{display:flex;gap:.4rem}
+.btn-bulk{flex:1;padding:.35rem .5rem;border-radius:6px;border:1px solid var(--border);
+  background:var(--card2);color:var(--muted);font-size:.75rem;font-weight:600;
+  cursor:pointer;transition:.15s}
+.btn-bulk:hover{background:var(--card);color:var(--text)}
+.btn-bulk.on:hover{border-color:var(--green);color:var(--green)}
+.btn-bulk.off:hover{border-color:var(--red);color:var(--red)}
+
+/* 설정 입력 */
+.sb-input-group{margin-bottom:.5rem}
+.sb-label{font-size:.72rem;color:var(--muted);margin-bottom:.25rem;display:block}
+.sb-input{width:100%;background:var(--card2);border:1px solid var(--border);
+  color:var(--text);border-radius:6px;padding:.4rem .6rem;font-size:.8rem;outline:none;transition:.15s}
+.sb-input:focus{border-color:var(--accent)}
+.sb-select{width:100%;background:var(--card2);border:1px solid var(--border);
+  color:var(--text);border-radius:6px;padding:.4rem .6rem;font-size:.8rem;outline:none}
+
+/* 스캔 버튼 */
+.btn-scan{width:100%;padding:.65rem;border-radius:8px;border:none;
+  font-size:.9rem;font-weight:700;cursor:pointer;transition:.2s;letter-spacing:.02em}
+.btn-scan.start{background:linear-gradient(135deg,#16a34a,#15803d);color:#fff}
+.btn-scan.start:hover{background:linear-gradient(135deg,#15803d,#166534)}
+.btn-scan.stop{background:linear-gradient(135deg,#dc2626,#b91c1c);color:#fff}
+.btn-scan.stop:hover{background:linear(135deg,#b91c1c,#991b1b)}
+.btn-scan:disabled{opacity:.4;cursor:not-allowed}
+
+/* ── 메인 콘텐츠 ──────────────────────────────────────────── */
+.main{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
+
+/* 진행 바 */
+.progress-bar{height:3px;background:var(--border);position:relative;flex-shrink:0}
+.progress-fill{height:100%;background:linear-gradient(90deg,var(--accent),#6366f1);
+  transition:width .4s ease;border-radius:2px}
+
+/* 탭 바 */
+.tab-bar{display:flex;gap:0;background:var(--sidebar);border-bottom:1px solid var(--border);
+  padding:0 1.2rem;flex-shrink:0}
+.tab-btn{padding:.7rem 1.1rem;border:none;background:none;color:var(--muted);
+  font-size:.83rem;font-weight:600;cursor:pointer;border-bottom:2px solid transparent;
+  margin-bottom:-1px;transition:.15s;display:flex;align-items:center;gap:.4rem}
+.tab-btn:hover{color:var(--text)}
+.tab-btn.active{color:var(--accent);border-bottom-color:var(--accent)}
+.tab-badge{background:var(--card2);color:var(--muted);padding:.1rem .35rem;
+  border-radius:10px;font-size:.68rem;min-width:18px;text-align:center}
+.tab-btn.active .tab-badge{background:rgba(59,130,246,.2);color:var(--accent)}
+
+/* 탭 콘텐츠 */
+.tab-content{flex:1;overflow:hidden;display:none}
+.tab-content.active{display:flex;flex-direction:column}
+
+/* ── 모니터 탭 ───────────────────────────────────────────── */
+.monitor-layout{display:flex;flex:1;overflow:hidden;gap:0}
+
+/* 모듈 파이프라인 패널 — 기본 숨김, 토글로 표시 */
+.pipeline-panel{width:var(--pipeline-w);flex-shrink:0;padding:.8rem;overflow-y:auto;
+  border-right:1px solid var(--border);
+  transition:width .2s ease,padding .2s ease,border .2s ease}
+.pipeline-panel.pipe-hidden{width:0;padding:0;border:none;overflow:hidden}
+.pipeline-title{font-size:.7rem;font-weight:700;color:var(--muted);
+  text-transform:uppercase;letter-spacing:.08em;margin-bottom:.6rem}
+.pipe-item{display:flex;align-items:center;gap:.5rem;padding:.45rem .5rem;
+  border-radius:6px;margin-bottom:.25rem;background:var(--card);border:1px solid var(--border);
+  transition:.2s}
+.pipe-item.running{border-color:var(--green);background:rgba(34,197,94,.07)}
+.pipe-item.done{border-color:rgba(59,130,246,.3);background:rgba(59,130,246,.05)}
+.pipe-item.error{border-color:rgba(239,68,68,.3);background:rgba(239,68,68,.05)}
+.pipe-item.pending{opacity:.45}
+.pipe-item.queued{border-color:rgba(59,130,246,.25);background:rgba(59,130,246,.05)}
+.pipe-item.disabled{opacity:.2}
+.pipe-dot{width:8px;height:8px;border-radius:50%;background:var(--border);flex-shrink:0}
+.pipe-item.queued .pipe-dot{background:transparent;border:2px solid var(--accent)}
+.pipe-item.running .pipe-dot{background:var(--green);animation:pulse 1s infinite}
+.pipe-item.done .pipe-dot{background:var(--accent)}
+.pipe-item.error .pipe-dot{background:var(--red)}
+.pipe-label{font-size:.72rem;flex:1;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.pipe-item.queued .pipe-label{color:#7aa8d8}
+.pipe-item.running .pipe-label{color:var(--green);font-weight:600}
+.pipe-item.done .pipe-label{color:var(--text)}
+/* 파이프라인 범례 */
+.pipe-legend{display:flex;flex-wrap:wrap;gap:.4rem .8rem;margin-bottom:.55rem;padding:.35rem .4rem;
+  background:var(--card);border:1px solid var(--border);border-radius:6px}
+.pipe-leg-item{display:flex;align-items:center;gap:.3rem;font-size:.63rem;color:var(--muted)}
+.pipe-leg-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.pipe-cnt{font-size:.68rem;color:var(--muted);background:var(--card2);
+  padding:.05rem .3rem;border-radius:4px}
+
+/* 터미널 */
+.terminal-wrap{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden;padding:.8rem}
+.terminal-header{display:flex;align-items:center;gap:.6rem;margin-bottom:.5rem}
+.terminal-title{font-size:.75rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+.terminal-controls{margin-left:auto;display:flex;gap:.4rem}
+.btn-sm{padding:.25rem .55rem;border-radius:5px;border:1px solid var(--border);
+  background:var(--card2);color:var(--muted);font-size:.72rem;cursor:pointer;transition:.15s}
+.btn-sm:hover{background:var(--card);color:var(--text)}
+#terminal{flex:1;background:var(--term-bg);border:1px solid var(--border);border-radius:8px;
+  padding:.75rem;overflow-y:auto;font-family:"Cascadia Code","Fira Code","Consolas",monospace;
+  font-size:.78rem;line-height:1.6;color:var(--term-text)}
+#terminal::-webkit-scrollbar{width:5px}
+#terminal::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+.log-line{display:flex;gap:.6rem;align-items:flex-start;padding:.05rem 0}
+.log-ts{color:#3a5070;font-size:.68rem;white-space:nowrap;padding-top:.05rem}
+.log-text{flex:1;word-break:break-all}
+.log-text.log-info{color:#4ade80}
+.log-text.log-warn{color:#fbbf24}
+.log-text.log-error{color:#f87171}
+.log-text.log-mod{color:#60a5fa;font-weight:600}
+.log-text.log-done{color:#34d399}
+
+/* ── 결과 탭 ─────────────────────────────────────────────── */
+.results-wrap{flex:1;overflow:hidden;display:flex;flex-direction:column}
+.sev-cards{display:grid;grid-template-columns:repeat(5,1fr);gap:.6rem;padding:.8rem;flex-shrink:0}
+.sev-card{background:var(--card);border:1px solid var(--border);border-radius:10px;
+  padding:.7rem .8rem;text-align:center;cursor:pointer;transition:.2s}
+.sev-card:hover,.sev-card.active{transform:translateY(-1px)}
+.sev-card.active{box-shadow:0 0 0 2px currentColor}
+.sev-num{font-size:1.8rem;font-weight:800;line-height:1}
+.sev-label{font-size:.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-top:.2rem}
+.sev-card[data-sev="critical"] .sev-num,.sev-card[data-sev="critical"].active{color:var(--c-critical)}
+.sev-card[data-sev="high"] .sev-num,.sev-card[data-sev="high"].active{color:var(--c-high)}
+.sev-card[data-sev="medium"] .sev-num,.sev-card[data-sev="medium"].active{color:var(--c-medium)}
+.sev-card[data-sev="low"] .sev-num,.sev-card[data-sev="low"].active{color:var(--c-low)}
+.sev-card[data-sev="info"] .sev-num,.sev-card[data-sev="info"].active{color:var(--c-info)}
+
+.findings-controls{display:flex;gap:.4rem;padding:0 .8rem .5rem;flex-wrap:wrap;flex-shrink:0}
+.filter-btn{padding:.3rem .7rem;border-radius:16px;border:1px solid var(--border);
+  background:var(--card2);color:var(--muted);font-size:.75rem;cursor:pointer;transition:.15s}
+.filter-btn:hover,.filter-btn.active{background:var(--accent);border-color:var(--accent);color:#fff}
+
+.findings-list{flex:1;overflow-y:auto;padding:0 .8rem .8rem}
+.findings-list::-webkit-scrollbar{width:5px}
+.findings-list::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+.no-findings{text-align:center;color:var(--muted);padding:3rem 1rem;font-size:.9rem}
+
+.f-card{background:var(--card);border:1px solid var(--border);border-radius:8px;
+  margin-bottom:.5rem;overflow:hidden;transition:.15s}
+.f-card:hover{border-color:#2a4060}
+.f-header{display:flex;align-items:center;gap:.6rem;padding:.6rem .8rem;cursor:pointer}
+.f-sev{padding:.2rem .55rem;border-radius:5px;font-size:.7rem;font-weight:700;color:#fff;white-space:nowrap;flex-shrink:0}
+.f-sev.critical{background:var(--c-critical)}
+.f-sev.high{background:var(--c-high)}
+.f-sev.medium{background:var(--c-medium)}
+.f-sev.low{background:var(--c-low)}
+.f-sev.info{background:var(--c-info)}
+.f-id{font-size:.7rem;color:var(--muted);font-family:monospace;flex-shrink:0}
+.f-cat{font-size:.7rem;background:var(--card2);color:var(--muted);padding:.15rem .4rem;
+  border-radius:4px;flex-shrink:0}
+.f-title{font-size:.83rem;font-weight:600;flex:1;min-width:0;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.f-toggle{font-size:.7rem;color:var(--muted);flex-shrink:0;padding:.2rem .4rem;
+  border-radius:4px;background:var(--card2);border:none;cursor:pointer}
+.f-body{display:none;padding:.6rem .8rem;border-top:1px solid var(--border)}
+.f-body.open{display:block}
+.f-desc{font-size:.82rem;color:#a8becf;line-height:1.6;margin-bottom:.6rem}
+.f-detail-table{width:100%;border-collapse:collapse;font-size:.78rem;margin-bottom:.6rem}
+.f-detail-table td{padding:.35rem .5rem;border:1px solid var(--border);vertical-align:top}
+.f-detail-table td:first-child{background:var(--card2);color:var(--muted);font-weight:500;width:30%;white-space:nowrap}
+.f-pre{background:var(--term-bg);color:#86efac;padding:.4rem .5rem;border-radius:4px;
+  font-size:.72rem;font-family:monospace;max-height:120px;overflow-y:auto;white-space:pre-wrap;word-break:break-all}
+.f-rec{background:rgba(59,130,246,.08);border-left:3px solid var(--accent);
+  padding:.55rem .7rem;border-radius:0 6px 6px 0;font-size:.8rem;line-height:1.6;color:#a8c8e8}
+.f-rec strong{color:var(--accent)}
+
+/* ── 보고서 탭 ──────────────────────────────────────────── */
+.report-wrap{flex:1;display:flex;flex-direction:column;align-items:center;
+  justify-content:flex-start;padding:2rem;gap:1rem;overflow-y:auto}
+.report-header{font-size:1rem;font-weight:700;color:var(--text);margin-bottom:.5rem}
+.report-btns{display:flex;gap:.8rem;flex-wrap:wrap;justify-content:center}
+.btn-report{display:flex;align-items:center;gap:.5rem;padding:.6rem 1.2rem;
+  border-radius:8px;border:1px solid var(--border);background:var(--card);
+  color:var(--text);font-size:.85rem;font-weight:600;cursor:pointer;text-decoration:none;transition:.2s}
+.btn-report:hover{background:var(--card2);border-color:var(--accent)}
+.btn-report.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn-report.primary:hover{background:var(--accent2)}
+.report-iframe-wrap{width:100%;flex:1;border:1px solid var(--border);border-radius:8px;overflow:hidden;min-height:400px}
+.report-iframe-wrap iframe{width:100%;height:100%;border:none}
+.report-placeholder{text-align:center;padding:3rem;color:var(--muted)}
+
+/* ── 하단 상태바 ─────────────────────────────────────────── */
+.status-bar{height:26px;background:var(--sidebar);border-top:1px solid var(--border);
+  display:flex;align-items:center;gap:1.5rem;padding:0 1rem;flex-shrink:0}
+.sb-item{display:flex;align-items:center;gap:.35rem;font-size:.7rem;color:var(--muted)}
+.sb-item strong{color:var(--text)}
+
+/* ── 파일 스캔 진행 표시 ───────────────────────────────── */
+.file-scan-wrap{background:var(--card);border:1px solid var(--border);border-radius:8px;
+  padding:.55rem .8rem;margin-bottom:.5rem;flex-shrink:0}
+.file-scan-header{display:flex;align-items:center;gap:.5rem;margin-bottom:.35rem}
+.file-scan-label{font-size:.7rem;font-weight:700;color:var(--muted);text-transform:uppercase;
+  letter-spacing:.06em}
+.file-scan-count{font-size:.7rem;color:var(--accent);margin-left:auto;font-family:monospace}
+.file-scan-bar{height:4px;background:var(--border);border-radius:2px;overflow:hidden;margin-bottom:.3rem}
+.file-scan-fill{height:100%;background:linear-gradient(90deg,#22c55e,#3b82f6);
+  transition:width .15s ease;border-radius:2px;width:0%}
+.file-scan-path{font-size:.7rem;color:var(--muted);font-family:monospace;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* ── 모듈 스캔 진행 표시 ───────────────────────────────── */
+.mod-scan-wrap{background:var(--card);border:1px solid var(--border);border-radius:8px;
+  padding:.55rem .8rem;margin-bottom:.5rem;flex-shrink:0}
+.mod-scan-header{display:flex;align-items:center;gap:.5rem;margin-bottom:.35rem}
+.mod-scan-label{font-size:.7rem;font-weight:700;color:var(--muted);text-transform:uppercase;
+  letter-spacing:.06em}
+.mod-scan-step{font-size:.7rem;color:var(--accent);margin-left:auto;font-family:monospace;font-weight:700}
+.mod-scan-bar{height:6px;background:var(--border);border-radius:3px;overflow:hidden;margin-bottom:.3rem}
+.mod-scan-fill{height:100%;background:linear-gradient(90deg,var(--accent),#6366f1);
+  transition:width .4s ease;border-radius:3px;width:0%}
+.mod-scan-name{font-size:.75rem;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* ── 폴더 열기 버튼 ─────────────────────────────────────── */
+.btn-open-folder{display:inline-flex;align-items:center;gap:.3rem;padding:.2rem .55rem;
+  border-radius:5px;border:1px solid var(--border);background:var(--card2);
+  color:var(--muted);font-size:.72rem;cursor:pointer;transition:.15s;margin:.15rem .15rem 0 0}
+.btn-open-folder:hover{border-color:var(--accent);color:var(--accent)}
+
+/* ── 기술 권고 섹션 ─────────────────────────────────────── */
+.f-rec-block{background:rgba(59,130,246,.06);border-left:3px solid var(--accent);
+  padding:.6rem .75rem;border-radius:0 6px 6px 0;margin-top:.5rem}
+.f-rec-title{font-size:.72rem;font-weight:700;color:var(--accent);margin-bottom:.35rem;
+  display:flex;align-items:center;gap:.3rem}
+.f-rec-text{font-size:.78rem;color:#a8c8e8;line-height:1.7;white-space:pre-wrap;word-break:break-word}
+.f-rec-cmd{background:var(--term-bg);color:#86efac;padding:.35rem .5rem;border-radius:4px;
+  font-family:monospace;font-size:.72rem;white-space:pre-wrap;word-break:break-all;
+  margin-top:.35rem;max-height:150px;overflow-y:auto}
+
+/* ── 반응형 ─────────────────────────────────────────────── */
+@media(max-width:1100px){
+  :root{--sidebar-w:230px;--pipeline-w:150px}
+}
+@media(max-width:900px){
+  :root{--sidebar-w:215px;--pipeline-w:140px}
+}
+@media(max-width:680px){
+  .pipeline-panel:not(.pipe-hidden){width:var(--pipeline-w) !important}
+}
+@media(max-width:680px){
+  .sidebar{position:fixed;left:calc(-1 * var(--sidebar-w));top:0;height:100%;z-index:200;transition:.3s}
+  .sidebar.open{left:0}
+  .sev-cards{grid-template-columns:repeat(3,1fr)}
+}
+</style>
+</head>
+<body>
+
+<!-- ── 헤더 ──────────────────────────────────────────────── -->
+<div class="header">
+  <div class="header-logo">
+    <svg viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+    </svg>
+    보안 취약점 탐지 시스템
+  </div>
+  <div class="header-spacer"></div>
+  <div id="hdrElapsed" class="header-time"></div>
+  <div id="statusBadge" class="status-badge idle">
+    <span class="pulse" id="statusPulse"></span>
+    <span id="statusText">대기 중</span>
+  </div>
+</div>
+
+<div class="layout">
+<!-- ── 사이드바 ─────────────────────────────────────────── -->
+<aside class="sidebar" id="sidebar">
+
+  <!-- 모듈 토글 -->
+  <div class="sb-section">
+    <div class="sb-title">탐지 모듈</div>
+    <div id="moduleList">
+      {% for key, mod in modules.items() %}
+      <div class="mod-card {% if module_states[key] %}active{% endif %}" id="mc-{{key}}" onclick="handleModClick('{{key}}')">
+        <div class="mod-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">{{ mod.svg | safe }}</svg></div>
+        <div class="mod-info">
+          <div class="mod-name">{{ mod.name }}</div>
+          <div class="mod-desc">{{ mod.desc }}</div>
+        </div>
+        <div class="toggle-wrap" onclick="event.stopPropagation()" title="클릭: 다음 스캔에 포함/제외">
+          <label class="toggle">
+            <input type="checkbox" id="tog-{{key}}" {% if module_states[key] %}checked{% endif %}
+              onchange="toggleModule('{{key}}', this.checked)">
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    <div class="bulk-btns" style="margin-top:.5rem">
+      <button class="btn-bulk on" onclick="toggleAll(true)">전체 ON</button>
+      <button class="btn-bulk off" onclick="toggleAll(false)">전체 OFF</button>
+    </div>
+  </div>
+
+  <!-- 스캔 설정 -->
+  <div class="sb-section">
+    <div class="sb-title">스캔 설정</div>
+    <div class="sb-input-group">
+      <label class="sb-label">대상 IP (포트 스캔)</label>
+      <input class="sb-input" id="targetIp" type="text" value="127.0.0.1" placeholder="127.0.0.1">
+    </div>
+    <div class="sb-input-group" id="piiDirGroup" style="display:none">
+      <label class="sb-label">PII 스캔 디렉토리</label>
+      <input class="sb-input" id="piiDir" type="text" placeholder="C:\Users\user">
+    </div>
+    <div class="sb-input-group">
+      <label class="sb-label">보고서 형식</label>
+      <select class="sb-select" id="reportFmt">
+        <option value="html">HTML (권장)</option>
+        <option value="json">JSON</option>
+        <option value="text">텍스트</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- 스캔 제어 -->
+  <div class="sb-section" style="border-bottom:none">
+    <button class="btn-scan start" id="btnScan" onclick="startScan()">스캔 시작</button>
+    <button class="btn-scan stop" id="btnStop" onclick="stopScan()" style="display:none;margin-top:.4rem">스캔 중단</button>
+    <button class="btn-scan stop" id="btnReset" onclick="resetScan()" style="display:none;margin-top:.4rem;opacity:.7;font-size:.78rem">강제 초기화</button>
+  </div>
+
+  <!-- 마지막 스캔 정보 -->
+  <div class="sb-section" style="border-bottom:none;font-size:.72rem;color:var(--muted)">
+    <div>마지막 스캔: <span id="lastScanTime">없음</span></div>
+    <div style="margin-top:.2rem">소요 시간: <span id="lastElapsed">-</span></div>
+  </div>
+</aside>
+
+<!-- ── 메인 ─────────────────────────────────────────────── -->
+<main class="main">
+  <!-- 진행 바 -->
+  <div class="progress-bar">
+    <div class="progress-fill" id="progressFill" style="width:0%"></div>
+  </div>
+
+  <!-- 탭 바 -->
+  <div class="tab-bar">
+    <button class="tab-btn active" id="tabBtn-monitor" onclick="switchTab('monitor')">
+      실시간 모니터링
+    </button>
+    <button class="tab-btn" id="tabBtn-results" onclick="switchTab('results')">
+      탐지 결과 <span class="tab-badge" id="tbadge-results">0</span>
+    </button>
+    <button class="tab-btn" id="tabBtn-report" onclick="switchTab('report')">
+      보고서
+    </button>
+    <button class="tab-btn" id="tabBtn-pipeline" onclick="togglePipeline()" title="모듈 파이프라인 패널 열기/닫기" style="margin-left:auto;font-size:.75rem;gap:.3rem">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+      </svg>
+      파이프라인
+    </button>
+  </div>
+
+  <!-- 탭: 모니터링 -->
+  <div class="tab-content active" id="tab-monitor">
+    <div class="monitor-layout">
+      <!-- 파이프라인 패널 (기본 숨김) -->
+      <div class="pipeline-panel pipe-hidden" id="pipelinePanel">
+        <div class="pipeline-title">모듈 파이프라인</div>
+        <!-- 범례 -->
+        <div class="pipe-legend">
+          <span class="pipe-leg-item">
+            <span class="pipe-leg-dot" style="background:var(--accent)"></span>완료
+          </span>
+          <span class="pipe-leg-item">
+            <span class="pipe-leg-dot" style="background:var(--green)"></span>실행중
+          </span>
+          <span class="pipe-leg-item">
+            <span class="pipe-leg-dot" style="background:transparent;border:2px solid var(--accent);display:inline-block;width:7px;height:7px;border-radius:50%"></span>예정
+          </span>
+          <span class="pipe-leg-item">
+            <span class="pipe-leg-dot" style="background:var(--border)"></span>비활성
+          </span>
+        </div>
+        <div id="pipelineList">
+          {% for key, mod in modules.items() %}
+          <div class="pipe-item pending" id="pipe-{{key}}">
+            <div class="pipe-dot"></div>
+            <span class="pipe-label">{{ mod.name }}</span>
+            <span class="pipe-cnt" id="pcnt-{{key}}" style="display:none">0</span>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <!-- 터미널 -->
+      <div class="terminal-wrap">
+        <div class="terminal-header">
+          <span class="terminal-title">실시간 로그</span>
+          <div class="terminal-controls">
+            <button class="btn-sm" onclick="toggleAutoScroll()">자동 스크롤 <span id="autoScrollTxt">ON</span></button>
+            <button class="btn-sm" onclick="clearTerminal()">지우기</button>
+          </div>
+        </div>
+
+        <!-- 모듈 전체 진행 상태 -->
+        <div class="mod-scan-wrap" id="modScanWrap" style="display:none">
+          <div class="mod-scan-header">
+            <span class="mod-scan-label">스캔 진행</span>
+            <span class="mod-scan-step" id="modScanStep">0 / 0</span>
+          </div>
+          <div class="mod-scan-bar">
+            <div class="mod-scan-fill" id="modScanFill"></div>
+          </div>
+          <div class="mod-scan-name" id="modScanName">대기 중...</div>
+        </div>
+
+        <!-- 파일 스캔 진행 표시 (악성코드 탐지 모듈 전용) -->
+        <div class="file-scan-wrap" id="fileScanWrap" style="display:none">
+          <div class="file-scan-header">
+            <span class="file-scan-label">파일 분석 중</span>
+            <span class="file-scan-count" id="fileScanCount">0 / 0</span>
+          </div>
+          <div class="file-scan-bar">
+            <div class="file-scan-fill" id="fileScanFill"></div>
+          </div>
+          <div class="file-scan-path" id="fileScanPath">준비 중...</div>
+        </div>
+
+        <div id="terminal">
+          <div class="log-line">
+            <span class="log-ts">--:--:--</span>
+            <span class="log-text log-info">보안 스캐너 웹 제어판에 오신 것을 환영합니다.</span>
+          </div>
+          <div class="log-line">
+            <span class="log-ts">--:--:--</span>
+            <span class="log-text log-info">왼쪽 패널에서 모듈을 활성화하고 [스캔 시작]을 클릭하세요.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 탭: 결과 -->
+  <div class="tab-content" id="tab-results">
+    <div class="results-wrap">
+      <div class="sev-cards">
+        <div class="sev-card" data-sev="critical" onclick="filterBySev('critical',this)">
+          <div class="sev-num" id="cnt-critical">0</div>
+          <div class="sev-label">심각</div>
+        </div>
+        <div class="sev-card" data-sev="high" onclick="filterBySev('high',this)">
+          <div class="sev-num" id="cnt-high">0</div>
+          <div class="sev-label">높음</div>
+        </div>
+        <div class="sev-card" data-sev="medium" onclick="filterBySev('medium',this)">
+          <div class="sev-num" id="cnt-medium">0</div>
+          <div class="sev-label">중간</div>
+        </div>
+        <div class="sev-card" data-sev="low" onclick="filterBySev('low',this)">
+          <div class="sev-num" id="cnt-low">0</div>
+          <div class="sev-label">낮음</div>
+        </div>
+        <div class="sev-card" data-sev="info" onclick="filterBySev('info',this)">
+          <div class="sev-num" id="cnt-info">0</div>
+          <div class="sev-label">정보</div>
+        </div>
+      </div>
+
+      <div class="findings-controls">
+        <button class="filter-btn active" onclick="filterByCat('',this)">전체</button>
+        <button class="filter-btn" onclick="filterByCat('server',this)">서버</button>
+        <button class="filter-btn" onclick="filterByCat('network',this)">네트워크</button>
+        <button class="filter-btn" onclick="filterByCat('process',this)">프로세스</button>
+        <button class="filter-btn" onclick="filterByCat('log',this)">로그</button>
+        <button class="filter-btn" onclick="filterByCat('attack',this)">공격</button>
+        <button class="filter-btn" onclick="filterByCat('port',this)">포트</button>
+        <button class="filter-btn" onclick="filterByCat('pii',this)">개인정보</button>
+        <button class="filter-btn" onclick="filterByCat('malware',this)">악성코드</button>
+      </div>
+
+      <div class="findings-list" id="findingsList">
+        <div class="no-findings">스캔 결과가 없습니다.<br>스캔을 시작하면 결과가 여기에 표시됩니다.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 탭: 보고서 -->
+  <div class="tab-content" id="tab-report">
+    <div class="report-wrap">
+      <div style="text-align:center">
+        <div class="report-header">보안 취약점 탐지 보고서</div>
+        <div style="font-size:.82rem;color:var(--muted);margin-bottom:1rem">
+          스캔 완료 후 보고서를 다운로드하거나 새 탭에서 확인하세요.
+        </div>
+      </div>
+      <div class="report-btns">
+        <a class="btn-report primary" href="/report" target="_blank">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
+          </svg>
+          보고서 열기 (새 탭)
+        </a>
+        <a class="btn-report" href="/report/download/html" download>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+          HTML 다운로드
+        </a>
+        <a class="btn-report" href="/report/download/json" download>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+          JSON 다운로드
+        </a>
+        <a class="btn-report" href="/report/download/text" download>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+          텍스트 다운로드
+        </a>
+      </div>
+      <div class="report-iframe-wrap" id="reportFrame">
+        <div class="report-placeholder">
+          스캔 완료 후 보고서가 여기에 표시됩니다.<br>
+          또는 위의 "보고서 열기" 버튼을 클릭하세요.
+        </div>
+      </div>
+    </div>
+  </div>
+
+</main>
+</div><!-- /.layout -->
+
+<!-- ── 상태바 ─────────────────────────────────────────────── -->
+<div class="status-bar">
+  <div class="sb-item">상태: <strong id="sbStatus">대기 중</strong></div>
+  <div class="sb-item">탐지: <strong id="sbCount">0</strong>건</div>
+  <div class="sb-item" id="sbCritItem" style="color:var(--c-critical)">
+    심각: <strong id="sbCritical">0</strong>
+  </div>
+  <div class="sb-item" style="color:var(--c-high)">
+    높음: <strong id="sbHigh">0</strong>
+  </div>
+  <div class="sb-item">진행: <strong id="sbProgress">-/-</strong></div>
+  <div class="sb-item" style="margin-left:auto">포트 5001</div>
+</div>
+
+<script>
+// ── 상태 ──────────────────────────────────────────────────
+const S = {
+  status: 'idle',
+  findings: [],
+  summary: {critical:0,high:0,medium:0,low:0,info:0},
+  sevFilter: '',
+  catFilter: '',
+  autoScroll: true,
+  elapsedTimer: null,
+  elapsedSec: 0,
+  modStatus: {},
+  modCounts: {},
+  modStates: {{ module_states | tojson }},
+};
+
+// ── SSE 연결 ──────────────────────────────────────────────
+let es = null;
+function connectSSE() {
+  if (es) es.close();
+  es = new EventSource('/api/stream');
+  es.onmessage = e => {
+    try { handleEvent(JSON.parse(e.data)); } catch(_) {}
+  };
+  es.onerror = () => {
+    setTimeout(connectSSE, 3000);
+  };
+}
+
+function handleEvent(d) {
+  switch(d.type) {
+    case 'state':      applyState(d);      break;
+    case 'scan_start':   onScanStart(d);      break;
+    case 'module_start': onModStart(d);       break;
+    case 'log':          appendLog(d.text);   break;
+    case 'module_done':  onModDone(d);        break;
+    case 'module_error': onModError(d);       break;
+    case 'file_progress': onFileProgress(d);  break;
+    case 'scan_complete': onComplete(d);      break;
+    case 'stopped':      onStopped(d);        break;
+    case 'ping':         break;
+  }
+}
+
+function applyState(d) {
+  S.status  = d.status;
+  S.summary = d.summary || S.summary;
+  S.findings = [];
+  S.modStatus = d.mod_status || {};
+  S.modStates = d.module_states || S.modStates;
+  if (d.status === 'running') {
+    setBtnRunning(true);
+    if (!S.elapsedTimer) startElapsedTimer(d.elapsed || 0);
+    if (d.last_file) onFileProgress({file: d.last_file, scanned: d.last_file_n, total: d.last_file_n});
+  } else {
+    setBtnRunning(false);
+    stopElapsedTimer();
+    if (d.elapsed) document.getElementById('lastElapsed').textContent = d.elapsed + '초';
+    if (d.completed_at) document.getElementById('lastScanTime').textContent = d.completed_at;
+  }
+  updateStatusBadge(d.status);
+  updateSummaryUI();
+  updateModuleStatesUI();
+  updatePipelineUI();
+  if (d.status !== 'running') syncPipelineToToggles();
+}
+
+// ── 스캔 이벤트 핸들러 ───────────────────────────────────
+function onScanStart(d) {
+  S.status = 'running';
+  S.findings = [];
+  S.modStatus = {};
+  S.modCounts = {};
+  setBtnRunning(true);
+  startElapsedTimer(0);
+  updateStatusBadge('running');
+  clearTerminal();
+  hideFileScan();
+  hideModScan();
+  // 스캔 시작 시 파이프라인 패널 자동으로 열기
+  if (!pipelineVisible) togglePipeline();
+  document.getElementById('findingsList').innerHTML = '<div class="no-findings">스캔 실행 중...</div>';
+  resetPipeline(d.modules || []);
+  updateSummaryUI();
+  appendLog(`스캔 시작 — 대상: ${d.target || '127.0.0.1'} / 모듈: ${(d.modules||[]).length}개`, 'mod');
+}
+
+function onModStart(d) {
+  S.modStatus[d.key] = 'running';
+  updatePipelineItem(d.key, 'running');
+  updateModCardStatus(d.key, 'running');
+  updateProgress(d.step, d.total);
+  updateModScan(d.step, d.total, d.name);
+  appendLog(`[${d.step}/${d.total}] ${d.name} 시작`, 'mod');
+}
+
+function onModDone(d) {
+  S.modStatus[d.key] = 'done';
+  S.modCounts[d.key] = d.count;
+
+  if (d.findings && d.findings.length) {
+    S.findings.push(...d.findings);
+  }
+
+  const sev = d.severity || {};
+  const sums = Object.entries(sev).filter(([,v])=>v>0)
+    .map(([k,v])=>`${k}:${v}`).join(' ');
+
+  updatePipelineItem(d.key, 'done', d.count);
+  updateModCardStatus(d.key, 'done', d.count);
+  appendLog(`${d.name} 완료 — ${d.count}개 탐지 (${sums || '없음'})`, 'done');
+
+  recalcSummary();
+  renderFindings();
+  updateSummaryUI();
+}
+
+function onModError(d) {
+  S.modStatus[d.key] = 'error';
+  updatePipelineItem(d.key, 'error');
+  updateModCardStatus(d.key, 'error');
+  appendLog(`[오류] ${d.name}: ${d.error}`, 'error');
+}
+
+function onComplete(d) {
+  S.status = 'completed';
+  setBtnRunning(false);
+  stopElapsedTimer();
+  hideFileScan();
+  hideModScan();
+  updateStatusBadge('completed');
+  updateProgress(d.total || 100, d.total || 100);
+  appendLog(`스캔 완료 — 총 ${d.total}건 탐지 / 소요: ${d.elapsed}초`, 'done');
+  document.getElementById('lastScanTime').textContent = new Date().toLocaleTimeString();
+  document.getElementById('lastElapsed').textContent = d.elapsed + '초';
+  if (d.report_saved) appendLog('보고서 저장 완료: security_report.html', 'info');
+  switchTab('results');
+  recalcSummary();
+  renderFindings();
+  updateSummaryUI();
+}
+
+function onStopped(d) {
+  S.status = 'stopped';
+  setBtnRunning(false);
+  stopElapsedTimer();
+  hideFileScan();
+  hideModScan();
+  updateStatusBadge('stopped');
+  appendLog(`중단됨 — ${d.message || ''}`, 'warn');
+}
+
+// ── API 호출 ─────────────────────────────────────────────
+async function startScan() {
+  const target  = document.getElementById('targetIp').value.trim() || '127.0.0.1';
+  const piiDir  = document.getElementById('piiDir').value.trim();
+  const fmt     = document.getElementById('reportFmt').value;
+
+  const body = { target, report_format: fmt };
+  if (piiDir) body.pii_dirs = [piiDir];
+
+  try {
+    const r = await fetch('/api/scan/start', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(body),
+    });
+    const d = await r.json();
+    if (!r.ok) {
+      appendLog('[오류] ' + (d.error || '스캔 시작 실패'), 'error');
+      if (r.status === 409) document.getElementById('btnReset').style.display = '';
+    } else { switchTab('monitor'); }
+  } catch(e) { appendLog('[오류] 서버 연결 실패', 'error'); }
+}
+
+async function stopScan() {
+  try {
+    const r = await fetch('/api/scan/stop', {method:'POST'});
+    if (!r.ok) { const d = await r.json(); appendLog('[오류] ' + d.error, 'error'); }
+  } catch(e) {}
+}
+
+async function resetScan() {
+  try {
+    await fetch('/api/scan/reset', {method:'POST'});
+    setBtnRunning(false);
+    updateStatusBadge('idle');
+  } catch(e) {}
+}
+
+async function toggleModule(key, enabled) {
+  try {
+    await fetch(`/api/modules/${key}`, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({enabled}),
+    });
+    S.modStates[key] = enabled;
+    updateModCardActive(key, enabled);
+    checkPiiDirVisibility();
+    syncPipelineToToggles();
+  } catch(e) {}
+}
+
+async function toggleAll(enabled) {
+  try {
+    await fetch('/api/modules/bulk', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({enabled}),
+    });
+    Object.keys(S.modStates).forEach(k => {
+      S.modStates[k] = enabled;
+      updateModCardActive(k, enabled);
+      document.getElementById('tog-'+k).checked = enabled;
+    });
+    checkPiiDirVisibility();
+    syncPipelineToToggles();
+  } catch(e) {}
+}
+
+// ── UI 업데이트 함수 ─────────────────────────────────────
+function updateStatusBadge(status) {
+  const badge = document.getElementById('statusBadge');
+  const text  = document.getElementById('statusText');
+  const pulse = document.getElementById('statusPulse');
+  const map = {idle:'대기 중', running:'스캔 중', completed:'완료', stopped:'중단됨', error:'오류'};
+  badge.className = `status-badge ${status}`;
+  text.textContent = map[status] || status;
+  pulse.style.display = status === 'running' ? '' : 'none';
+  document.getElementById('sbStatus').textContent = map[status] || status;
+}
+
+function updateSummaryUI() {
+  ['critical','high','medium','low','info'].forEach(s => {
+    document.getElementById('cnt-'+s).textContent = S.summary[s] || 0;
+  });
+  const total = Object.values(S.summary).reduce((a,b)=>a+b,0);
+  document.getElementById('sbCount').textContent    = total;
+  document.getElementById('sbCritical').textContent = S.summary.critical || 0;
+  document.getElementById('sbHigh').textContent     = S.summary.high || 0;
+  document.getElementById('tbadge-results').textContent = total;
+}
+
+function recalcSummary() {
+  const counts = {critical:0,high:0,medium:0,low:0,info:0};
+  S.findings.forEach(f => { const s=f.severity||'info'; counts[s]=(counts[s]||0)+1; });
+  S.summary = counts;
+}
+
+function updateProgress(step, total) {
+  const pct = total > 0 ? Math.round((step/total)*100) : 0;
+  document.getElementById('progressFill').style.width = pct + '%';
+  document.getElementById('sbProgress').textContent = `${step}/${total}`;
+}
+
+function updateModuleStatesUI() {
+  Object.entries(S.modStates).forEach(([k,enabled]) => {
+    const el = document.getElementById('tog-'+k);
+    if (el) el.checked = !!enabled;
+    updateModCardActive(k, !!enabled);
+  });
+}
+
+function updateModCardActive(key, enabled) {
+  const card = document.getElementById('mc-'+key);
+  if (!card) return;
+  card.classList.toggle('active', !!enabled);
+}
+
+function updateModCardStatus(key, status, count) {
+  const dot = document.getElementById('msd-'+key);
+  if (dot) dot.className = `mod-status-dot ${status}`;
+  if (count !== undefined) {
+    const cnt = document.getElementById('mcount-'+key);
+    if (cnt) { cnt.textContent = count; cnt.style.display = count > 0 ? '' : 'none'; }
+  }
+}
+
+function updatePipelineUI() {
+  Object.entries(S.modStatus).forEach(([k,st]) => {
+    updatePipelineItem(k, st, S.modCounts[k]);
+  });
+}
+
+function resetPipeline(selectedKeys) {
+  const selSet = new Set(selectedKeys || []);
+  document.querySelectorAll('[id^="pipe-"]').forEach(el => {
+    const key = el.id.replace('pipe-','');
+    el.className = selSet.has(key) ? 'pipe-item queued' : 'pipe-item disabled';
+    const dot = el.querySelector('.pipe-dot'); if(dot) dot.className='pipe-dot';
+    const cnt = el.querySelector('[id^="pcnt-"]'); if(cnt) cnt.style.display='none';
+  });
+  document.querySelectorAll('[id^="msd-"]').forEach(el => el.className='mod-status-dot');
+  document.querySelectorAll('[id^="mcount-"]').forEach(el => el.style.display='none');
+}
+
+// 스캔 전 파이프라인 상태를 토글 ON/OFF로 반영
+function syncPipelineToToggles() {
+  if (S.status === 'running') return;
+  document.querySelectorAll('[id^="pipe-"]').forEach(el => {
+    const key = el.id.replace('pipe-','');
+    const on = !!S.modStates[key];
+    el.className = on ? 'pipe-item queued' : 'pipe-item disabled';
+    const dot = el.querySelector('.pipe-dot'); if(dot) dot.className='pipe-dot';
+  });
+}
+
+function updatePipelineItem(key, status, count) {
+  const item = document.getElementById('pipe-'+key);
+  if (!item) return;
+  item.className = `pipe-item ${status}`;
+  const dot = item.querySelector('.pipe-dot');
+  if (dot) dot.className = `pipe-dot`;
+  if (count !== undefined) {
+    const cnt = document.getElementById('pcnt-'+key);
+    if (cnt) { cnt.textContent = count; cnt.style.display = count > 0 ? '' : 'none'; }
+  }
+}
+
+function handleModClick(key) {
+  const tog = document.getElementById('tog-'+key);
+  if (!tog || tog.disabled) return;
+  tog.checked = !tog.checked;
+  toggleModule(key, tog.checked);
+}
+
+function setBtnRunning(running) {
+  const btnScan  = document.getElementById('btnScan');
+  const btnStop  = document.getElementById('btnStop');
+  const btnReset = document.getElementById('btnReset');
+  const toggles  = document.querySelectorAll('.toggle input');
+  btnScan.style.display  = running ? 'none' : '';
+  btnStop.style.display  = running ? '' : 'none';
+  btnReset.style.display = running ? '' : 'none';
+  toggles.forEach(t => t.disabled = running);
+  document.querySelector('.btn-bulk.on').disabled = running;
+  document.querySelector('.btn-bulk.off').disabled = running;
+}
+
+function checkPiiDirVisibility() {
+  const piiEnabled = S.modStates['pii'];
+  document.getElementById('piiDirGroup').style.display = piiEnabled ? '' : 'none';
+}
+
+// ── 터미널 ───────────────────────────────────────────────
+function appendLog(text, level='info') {
+  const terminal = document.getElementById('terminal');
+  const line = document.createElement('div');
+  line.className = 'log-line';
+  const ts = new Date().toLocaleTimeString('ko-KR', {hour12:false});
+  const cls = {info:'log-info', warn:'log-warn', error:'log-error', mod:'log-mod', done:'log-done'}[level] || 'log-info';
+  line.innerHTML = `<span class="log-ts">${ts}</span><span class="log-text ${cls}">${esc(text)}</span>`;
+  terminal.appendChild(line);
+  if (S.autoScroll) terminal.scrollTop = terminal.scrollHeight;
+}
+
+function clearTerminal() {
+  document.getElementById('terminal').innerHTML = '';
+}
+
+function toggleAutoScroll() {
+  S.autoScroll = !S.autoScroll;
+  document.getElementById('autoScrollTxt').textContent = S.autoScroll ? 'ON' : 'OFF';
+}
+
+// ── 탭 전환 ──────────────────────────────────────────────
+function switchTab(tab) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+  document.getElementById('tabBtn-'+tab).classList.add('active');
+  document.getElementById('tab-'+tab).classList.add('active');
+}
+
+// ── 파이프라인 패널 토글 ─────────────────────────────────
+let pipelineVisible = false;
+function togglePipeline() {
+  pipelineVisible = !pipelineVisible;
+  const panel = document.getElementById('pipelinePanel');
+  const btn   = document.getElementById('tabBtn-pipeline');
+  panel.classList.toggle('pipe-hidden', !pipelineVisible);
+  btn.classList.toggle('active', pipelineVisible);
+}
+
+// ── 결과 필터 & 렌더 ─────────────────────────────────────
+function filterBySev(sev, el) {
+  S.sevFilter = S.sevFilter === sev ? '' : sev;
+  document.querySelectorAll('.sev-card').forEach(c => c.classList.remove('active'));
+  if (S.sevFilter) el.classList.add('active');
+  renderFindings();
+}
+
+function filterByCat(cat, el) {
+  S.catFilter = cat;
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  renderFindings();
+}
+
+const CAT_KO = {server:'서버',network:'네트워크',process:'프로세스',log:'로그',attack:'공격',port:'포트',pii:'개인정보',malware:'악성코드'};
+const SEV_KO = {critical:'심각',high:'높음',medium:'중간',low:'낮음',info:'정보'};
+
+function renderFindings() {
+  let items = S.findings.slice();
+  if (S.sevFilter) items = items.filter(f => f.severity === S.sevFilter);
+  if (S.catFilter) items = items.filter(f => f.category === S.catFilter);
+
+  // severity order
+  const order = {critical:0,high:1,medium:2,low:3,info:4};
+  items.sort((a,b) => (order[a.severity]||9) - (order[b.severity]||9));
+
+  const container = document.getElementById('findingsList');
+  if (!items.length) {
+    container.innerHTML = '<div class="no-findings">탐지된 항목이 없습니다.</div>';
+    return;
+  }
+
+  container.innerHTML = items.map(f => {
+    const sev      = f.severity || 'info';
+    const cat      = CAT_KO[f.category] || f.category;
+    const detHtml  = renderDetails(f.details);
+    const folderBtns = renderFolderButtons(f.details);
+    const recHtml  = renderRecommendation(f.recommendation);
+    return `
+    <div class="f-card" id="fc-${f.id}">
+      <div class="f-header" onclick="toggleCard('${f.id}')">
+        <span class="f-sev ${sev}">${SEV_KO[sev]||sev}</span>
+        <span class="f-id">${esc(f.id||'')}</span>
+        <span class="f-cat">${cat}</span>
+        <span class="f-title">${esc(f.title||'')}</span>
+        <button class="f-toggle">▼</button>
+      </div>
+      <div class="f-body" id="fb-${f.id}">
+        <p class="f-desc">${esc(f.description||'')}</p>
+        ${detHtml}
+        ${folderBtns}
+        ${recHtml}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function toggleCard(id) {
+  const body = document.getElementById('fb-'+id);
+  const btn  = document.querySelector(`#fc-${id} .f-toggle`);
+  if (!body) return;
+  const open = body.classList.toggle('open');
+  if (btn) btn.textContent = open ? '▲' : '▼';
+}
+
+function renderDetails(details) {
+  if (!details) return '';
+  if (Array.isArray(details)) {
+    if (!details.length) return '';
+    return `<div class="f-pre">${esc(JSON.stringify(details.slice(0,10), null, 2))}</div>`;
+  }
+  if (typeof details === 'object') {
+    const rows = Object.entries(details).map(([k,v]) => {
+      const val = typeof v === 'object' ? `<pre class="f-pre">${esc(JSON.stringify(v,null,2))}</pre>` : esc(String(v));
+      return `<tr><td>${esc(k)}</td><td>${val}</td></tr>`;
+    }).join('');
+    return `<table class="f-detail-table">${rows}</table>`;
+  }
+  return `<div class="f-pre">${esc(String(details))}</div>`;
+}
+
+// 파일 경로 추출 (한국어 키 및 영어 키 모두 지원)
+const PATH_KEYS = ['파일', '경로', 'path', 'file', '실제 경로', 'DLL', '영향 파일'];
+function extractFilePaths(details) {
+  const paths = new Set();
+  const addIfPath = v => {
+    if (typeof v === 'string' && /^[A-Za-z]:[\\\/]/.test(v.trim())) paths.add(v.trim());
+  };
+  const addValue = v => {
+    if (Array.isArray(v)) v.forEach(addIfPath);
+    else addIfPath(v);
+  };
+  if (Array.isArray(details)) {
+    details.forEach(d => {
+      if (d && typeof d === 'object') PATH_KEYS.forEach(k => { if (d[k]) addValue(d[k]); });
+    });
+  } else if (details && typeof details === 'object') {
+    PATH_KEYS.forEach(k => { if (details[k]) addValue(details[k]); });
+    Object.values(details).forEach(v => addValue(v));
+  }
+  return [...paths].slice(0, 8);
+}
+
+// 폴더 열기 버튼 렌더링
+function renderFolderButtons(details) {
+  const paths = extractFilePaths(details);
+  if (!paths.length) return '';
+  const btns = paths.map(p => {
+    const label = p.length > 55 ? '...' + p.slice(-52) : p;
+    return `<button class="btn-open-folder" data-path="${esc(p)}" onclick="openFolder(this.dataset.path)">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/>
+      </svg>
+      ${esc(label)}
+    </button>`;
+  }).join('');
+  return `<div style="margin:.4rem 0 .2rem">${btns}</div>`;
+}
+
+// 기술 권고 렌더링 (개행으로 구분된 명령어를 코드 블록으로 표시)
+function renderRecommendation(rec) {
+  if (!rec) return '';
+  const lines = String(rec).split('\n');
+  let textLines = [], cmdLines = [];
+  let html = '<div class="f-rec-block"><div class="f-rec-title">⚡ 기술 권고 및 조치 명령</div>';
+  const isCmd = l => /^(reg |del |sc |net |schtasks|taskkill|Stop-|Remove-|Start-|Set-|Get-|vssadmin|certmgr|explorer|notepad|shell:|AdwCleaner|Malwarebytes|https?:\/\/|[A-Z]:\\)/i.test(l.trim());
+
+  let inCmd = false;
+  lines.forEach(line => {
+    const trimmed = line.trim();
+    if (!trimmed) return;
+    if (isCmd(trimmed) || (trimmed.startsWith('#') && inCmd)) {
+      if (!inCmd) {
+        if (textLines.length) { html += `<div class="f-rec-text">${esc(textLines.join('\n'))}</div>`; textLines = []; }
+        cmdLines.push(trimmed);
+        inCmd = true;
+      } else {
+        cmdLines.push(trimmed);
+      }
+    } else {
+      if (inCmd) {
+        html += `<div class="f-rec-cmd">${esc(cmdLines.join('\n'))}</div>`; cmdLines = []; inCmd = false;
+      }
+      textLines.push(trimmed);
+    }
+  });
+  if (inCmd && cmdLines.length) html += `<div class="f-rec-cmd">${esc(cmdLines.join('\n'))}</div>`;
+  if (textLines.length) html += `<div class="f-rec-text">${esc(textLines.join('\n'))}</div>`;
+  return html + '</div>';
+}
+
+// 폴더 열기 API 호출
+async function openFolder(path) {
+  try {
+    const r = await fetch('/api/open_folder', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({path}),
+    });
+    const d = await r.json();
+    if (!r.ok) appendLog(`[폴더 열기 실패] ${d.error || '알 수 없는 오류'}`, 'warn');
+  } catch(e) {
+    appendLog('[폴더 열기 오류] 서버 연결 실패', 'error');
+  }
+}
+
+// 파일 스캔 진행 업데이트
+function onFileProgress(d) {
+  const wrap  = document.getElementById('fileScanWrap');
+  const fill  = document.getElementById('fileScanFill');
+  const count = document.getElementById('fileScanCount');
+  const path  = document.getElementById('fileScanPath');
+  if (!wrap) return;
+  wrap.style.display = '';
+  const pct = d.total > 0 ? Math.min(100, Math.round((d.scanned / d.total) * 100)) : 0;
+  if (fill)  fill.style.width = (d.total > 0 ? pct : 100) + '%';
+  if (count) count.textContent = d.total > 0
+    ? `${d.scanned} / ${d.total}  (${pct}%)`
+    : `${d.scanned}개 수집 중...`;
+  if (path)  path.textContent = d.file || '';
+}
+
+function hideFileScan() {
+  const wrap = document.getElementById('fileScanWrap');
+  if (wrap) wrap.style.display = 'none';
+}
+
+function updateModScan(step, total, name) {
+  const wrap = document.getElementById('modScanWrap');
+  const fill = document.getElementById('modScanFill');
+  const stepEl = document.getElementById('modScanStep');
+  const nameEl = document.getElementById('modScanName');
+  if (!wrap) return;
+  wrap.style.display = '';
+  const pct = total > 0 ? Math.round(((step - 1) / total) * 100) : 0;
+  if (fill)   fill.style.width = pct + '%';
+  if (stepEl) stepEl.textContent = `${step} / ${total}`;
+  if (nameEl) nameEl.textContent = name || '';
+}
+
+function hideModScan() {
+  const wrap = document.getElementById('modScanWrap');
+  if (wrap) wrap.style.display = 'none';
+}
+
+// ── 타이머 ───────────────────────────────────────────────
+function startElapsedTimer(initial=0) {
+  stopElapsedTimer();
+  S.elapsedSec = initial;
+  S.elapsedTimer = setInterval(() => {
+    S.elapsedSec++;
+    const m = Math.floor(S.elapsedSec/60).toString().padStart(2,'0');
+    const s = (S.elapsedSec%60).toString().padStart(2,'0');
+    document.getElementById('hdrElapsed').textContent = `${m}:${s}`;
+  }, 1000);
+}
+
+function stopElapsedTimer() {
+  if (S.elapsedTimer) { clearInterval(S.elapsedTimer); S.elapsedTimer=null; }
+}
+
+// ── 유틸 ─────────────────────────────────────────────────
+function esc(s) {
+  return String(s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── 초기화 ───────────────────────────────────────────────
+checkPiiDirVisibility();
+syncPipelineToToggles();
+connectSSE();
+</script>
+</body>
+</html>
