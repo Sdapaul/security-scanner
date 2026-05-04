@@ -18,17 +18,21 @@ from flask import Flask, Response, jsonify, render_template, request, send_file
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, BASE_DIR)
 
+from modules.utils import kill_current_proc
+
 app = Flask(__name__)
 app.secret_key = os.urandom(24)
 
 # ── 이벤트 브로드캐스트 (Condition 기반 pub/sub) ──────────────────
 event_log: list[dict] = []          # 전체 이벤트 누적 (200건 링 버퍼, file_progress 제외)
+event_log_offset = 0                # pop(0) 횟수 — 절대 인덱스 = offset + 상대위치
 event_condition = threading.Condition()
 
 
 def _emit(**kwargs):
     """모든 SSE 구독자에게 이벤트를 브로드캐스트합니다.
     file_progress는 링버퍼에 저장하지 않아 중요 이벤트(scan_complete 등) 유실을 방지합니다."""
+    global event_log_offset
     event = {'ts': time.time(), **kwargs}
     with event_condition:
         if kwargs.get('type') == 'file_progress':
@@ -38,6 +42,7 @@ def _emit(**kwargs):
             event_log.append(event)
             if len(event_log) > 200:
                 event_log.pop(0)
+                event_log_offset += 1
         event_condition.notify_all()
 
 
@@ -113,8 +118,8 @@ class ScanManager:
             }
 
 
-manager    = ScanManager()
-stop_event = threading.Event()
+manager         = ScanManager()
+scan_stop_event = threading.Event()
 scan_thread: threading.Thread | None = None
 
 
@@ -158,7 +163,7 @@ _MODULE_FUNC = {
 }
 
 
-def _run_scan(selected: list[str], target: str, pii_dirs: list[str]):
+def _run_scan(selected: list[str], target: str, pii_dirs: list[str], my_stop: threading.Event):
     real_stdout = sys.stdout
     sys.stdout  = _LogCapture(real_stdout)
 
@@ -175,7 +180,7 @@ def _run_scan(selected: list[str], target: str, pii_dirs: list[str]):
     completed_normally = True
 
     for idx, key in enumerate(selected, 1):
-        if stop_event.is_set():
+        if my_stop.is_set():
             completed_normally = False
             manager.status = 'stopped'
             _emit(type='stopped', message='사용자에 의해 중단되었습니다.')
@@ -196,7 +201,7 @@ def _run_scan(selected: list[str], target: str, pii_dirs: list[str]):
 
             # 중단 신호를 지원하는 모듈에 stop_check 주입
             if hasattr(mod, 'set_stop_check'):
-                mod.set_stop_check(stop_event.is_set)
+                mod.set_stop_check(my_stop.is_set)
 
             try:
                 if arg_key == 'target':
@@ -226,7 +231,7 @@ def _run_scan(selected: list[str], target: str, pii_dirs: list[str]):
             manager.mod_status[key] = 'error'
             _emit(type='module_error', key=key, name=mod_info['name'], error=str(exc))
 
-    if completed_normally and not stop_event.is_set():
+    if completed_normally and not my_stop.is_set():
         manager.status       = 'completed'
         manager.elapsed      = time.time() - t0
         manager.completed_at = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -289,14 +294,13 @@ def api_toggle_all():
 
 @app.route('/api/scan/start', methods=['POST'])
 def api_scan_start():
-    global scan_thread
+    global scan_thread, scan_stop_event
 
     if manager.status == 'running':
         # 스레드가 이미 죽었으면 자동 초기화 후 진행
         if scan_thread is not None and scan_thread.is_alive():
             return jsonify({'error': '이미 스캔이 실행 중입니다.'}), 409
         manager.reset()
-        stop_event.clear()
 
     data = request.get_json(force=True) or {}
     target   = data.get('target', '127.0.0.1').strip() or '127.0.0.1'
@@ -306,6 +310,12 @@ def api_scan_start():
         os.path.join(_home, 'Desktop'),
         os.path.join(_home, 'Downloads'),
     ]
+    # OneDrive가 있으면 추가
+    for _od in ('OneDrive', 'OneDrive - Personal', '원드라이브'):
+        _od_path = os.path.join(_home, _od)
+        if os.path.isdir(_od_path):
+            _safe_defaults.append(_od_path)
+            break
     pii_dirs = data.get('pii_dirs', _safe_defaults)
     if isinstance(pii_dirs, str):
         pii_dirs = [pii_dirs]
@@ -314,12 +324,12 @@ def api_scan_start():
     if not selected:
         return jsonify({'error': '활성화된 모듈이 없습니다.'}), 400
 
+    scan_stop_event = threading.Event()   # 스캔마다 새 이벤트 생성
     manager.reset()
-    stop_event.clear()
 
     scan_thread = threading.Thread(
         target=_run_scan,
-        args=(selected, target, pii_dirs),
+        args=(selected, target, pii_dirs, scan_stop_event),
         daemon=True,
         name='scanner',
     )
@@ -332,16 +342,23 @@ def api_scan_start():
 def api_scan_stop():
     if manager.status != 'running':
         return jsonify({'error': '실행 중인 스캔이 없습니다.'}), 400
-    stop_event.set()
+    scan_stop_event.set()
+    kill_current_proc()
     return jsonify({'status': 'stopping'})
 
 
 @app.route('/api/scan/reset', methods=['POST'])
 def api_scan_reset():
     """백그라운드 스레드가 멈춰 새 스캔을 시작할 수 없을 때 강제 초기화합니다."""
-    global scan_thread
-    stop_event.set()
+    global scan_thread, scan_stop_event
+    old_event  = scan_stop_event
+    old_thread = scan_thread
+    old_event.set()              # 구 스캔 스레드에 중단 신호
+    kill_current_proc()
+    if old_thread is not None:
+        old_thread.join(timeout=4)
     manager.reset()
+    scan_stop_event = threading.Event()  # 새 이벤트 생성 (구 이벤트는 set 상태 유지)
     scan_thread = None
     _emit(type='stopped', message='강제 초기화되었습니다. 새 스캔을 시작할 수 있습니다.')
     return jsonify({'status': 'reset'})
@@ -366,22 +383,32 @@ def api_stream():
         # 현재 상태 즉시 전송 (last_file 포함으로 재연결 시 파일 진행 복원)
         yield f"data: {json.dumps({'type': 'state', **manager.to_dict(), 'module_states': module_states}, ensure_ascii=False)}\n\n"
 
-        idx          = len(event_log)
-        last_file_n  = manager.last_file_n  # 마지막으로 전송한 파일 번호 추적
+        # 절대 인덱스 0부터 시작 → 재연결 시 링버퍼에 남아있는 기존 이벤트 히스토리 전송
+        abs_idx      = 0
+        last_file_n  = manager.last_file_n
 
         while True:
+            ping_needed = False
             with event_condition:
-                while len(event_log) <= idx and manager.last_file_n == last_file_n:
+                abs_tail = event_log_offset + len(event_log)
+                while abs_tail <= abs_idx and manager.last_file_n == last_file_n:
                     notified = event_condition.wait(timeout=5)
                     if not notified:
-                        yield f"data: {json.dumps({'type': 'ping'})}\n\n"
+                        ping_needed = True
+                        break
+                    abs_tail = event_log_offset + len(event_log)
 
-                new_events   = event_log[idx:]
-                idx          = len(event_log)
-                cur_file_n   = manager.last_file_n
-                cur_file     = manager.last_file
+                # 링버퍼에서 abs_idx에 해당하는 상대 위치 계산
+                rel_start = max(0, abs_idx - event_log_offset)
+                new_events = event_log[rel_start:]
+                abs_idx    = event_log_offset + len(event_log)
+                cur_file_n = manager.last_file_n
+                cur_file   = manager.last_file
 
-            # file_progress 변경분 전송
+            # 락 해제 후 yield — 락 보유 중 yield는 스캔 스레드와 교착 상태 유발
+            if ping_needed:
+                yield f"data: {json.dumps({'type': 'ping'})}\n\n"
+
             if cur_file_n != last_file_n and cur_file:
                 last_file_n = cur_file_n
                 yield f"data: {json.dumps({'type':'file_progress','file':cur_file,'scanned':cur_file_n,'total':cur_file_n}, ensure_ascii=False)}\n\n"

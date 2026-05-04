@@ -118,6 +118,29 @@ input:disabled+.toggle-slider{opacity:.4;cursor:not-allowed}
 .sb-select{width:100%;background:var(--card2);border:1px solid var(--border);
   color:var(--text);border-radius:6px;padding:.4rem .6rem;font-size:.8rem;outline:none}
 
+/* PII 경로 안내 */
+.pii-guide{margin-top:.4rem;border:1px solid var(--border);border-radius:6px;overflow:hidden;font-size:.72rem}
+.pii-guide-hd{display:flex;justify-content:space-between;align-items:center;
+  padding:.32rem .6rem;cursor:pointer;background:var(--card2);color:var(--muted);
+  user-select:none;transition:.15s;font-size:.72rem}
+.pii-guide-hd:hover{color:var(--text)}
+.pii-guide-arrow{transition:transform .2s;display:inline-block;font-size:.65rem}
+.pii-guide-hd.open .pii-guide-arrow{transform:rotate(180deg)}
+.pii-guide-bd{display:none;padding:.55rem .65rem;background:var(--sidebar);
+  border-top:1px solid var(--border);line-height:1.6}
+.pii-guide-bd.open{display:block}
+.pii-guide-stitle{color:var(--muted);font-size:.67rem;font-weight:700;
+  text-transform:uppercase;letter-spacing:.06em;margin-bottom:.3rem}
+.pii-guide-sep{border-top:1px solid var(--border);margin:.45rem 0}
+.pii-guide-row{display:flex;gap:.5rem;align-items:baseline;margin-bottom:.22rem}
+.pii-guide-path{font-family:monospace;font-size:.74rem;color:var(--accent);
+  background:rgba(59,130,246,.1);padding:.03rem .32rem;border-radius:3px;white-space:nowrap;flex-shrink:0}
+.pii-guide-desc{color:var(--text);font-size:.7rem}
+.pii-guide-chip{display:inline-block;border-radius:3px;padding:.03rem .3rem;
+  font-size:.67rem;margin:.06rem .08rem .06rem 0;line-height:1.4}
+.pii-guide-chip.skip{background:rgba(239,68,68,.08);color:#9ca3af;text-decoration:line-through}
+.pii-guide-chip.scan{background:rgba(34,197,94,.1);color:var(--green)}
+
 /* 스캔 버튼 */
 .btn-scan{width:100%;padding:.65rem;border-radius:8px;border:none;
   font-size:.9rem;font-weight:700;cursor:pointer;transition:.2s;letter-spacing:.02em}
@@ -399,8 +422,68 @@ input:disabled+.toggle-slider{opacity:.4;cursor:not-allowed}
       <input class="sb-input" id="targetIp" type="text" value="127.0.0.1" placeholder="127.0.0.1">
     </div>
     <div class="sb-input-group" id="piiDirGroup" style="display:none">
-      <label class="sb-label">PII 스캔 디렉토리</label>
-      <input class="sb-input" id="piiDir" type="text" placeholder="C:\Users\user">
+      <label class="sb-label">PII 스캔 디렉토리 <span style="font-weight:400;opacity:.7">(콤마로 여러 경로 구분)</span></label>
+      <input class="sb-input" id="piiDir" type="text" placeholder="예) C:\  또는  C:\Users\admin, D:\업무자료">
+    </div>
+    <div id="piiGuide" style="display:none">
+      <div class="pii-guide">
+        <div class="pii-guide-hd" onclick="togglePiiGuide(this)">
+          경로 입력 안내<span class="pii-guide-arrow">▾</span>
+        </div>
+        <div class="pii-guide-bd" id="piiGuideBd">
+
+          <div class="pii-guide-stitle">빈 칸 시 기본 스캔 경로</div>
+          <div style="color:var(--text);font-size:.71rem;margin-bottom:.1rem">
+            Documents &nbsp;·&nbsp; Desktop &nbsp;·&nbsp; Downloads<br>
+            AppData\Roaming &nbsp;·&nbsp; OneDrive <span style="color:var(--muted)">(있을 경우)</span>
+          </div>
+
+          <div class="pii-guide-sep"></div>
+
+          <div class="pii-guide-stitle">입력 예시</div>
+          <div class="pii-guide-row">
+            <span class="pii-guide-path">C:\Users\admin</span>
+            <span class="pii-guide-desc">홈 디렉터리 전체</span>
+          </div>
+          <div class="pii-guide-row">
+            <span class="pii-guide-path">C:\</span>
+            <span class="pii-guide-desc">C 드라이브 전체</span>
+          </div>
+          <div class="pii-guide-row">
+            <span class="pii-guide-path">C:\, D:\업무</span>
+            <span class="pii-guide-desc">여러 경로 동시 스캔</span>
+          </div>
+
+          <div class="pii-guide-sep"></div>
+
+          <div class="pii-guide-stitle">자동 제외 경로 <span style="font-weight:400;text-transform:none;letter-spacing:0">(40여 개)</span></div>
+          <span class="pii-guide-chip skip">Windows</span>
+          <span class="pii-guide-chip skip">Program Files</span>
+          <span class="pii-guide-chip skip">ProgramData</span>
+          <span class="pii-guide-chip skip">Recovery</span>
+          <span class="pii-guide-chip skip">PerfLogs</span>
+          <span class="pii-guide-chip skip">$Recycle.Bin</span>
+          <span class="pii-guide-chip skip">Intel / AMD / NVIDIA</span>
+          <span class="pii-guide-chip skip">AppData\Local\Packages</span>
+          <span class="pii-guide-chip skip">AppData\Local\Programs</span>
+          <span class="pii-guide-chip skip">AppData\LocalLow</span>
+          <span class="pii-guide-chip skip">AppData\Roaming\Zoom</span>
+          <span class="pii-guide-chip skip">Discord · Slack · Teams</span>
+          <span class="pii-guide-chip skip">Spotify · Steam · Chrome</span>
+          <span class="pii-guide-chip skip">Cache · GPUCache</span>
+          <span class="pii-guide-chip skip">node_modules · __pycache__</span>
+          <span class="pii-guide-chip skip">Temp · tmp · Logs</span>
+
+          <div class="pii-guide-sep"></div>
+
+          <div class="pii-guide-stitle">주요 탐지 대상</div>
+          <span class="pii-guide-chip scan">.txt .csv .json .xml</span>
+          <span class="pii-guide-chip scan">.py .js .ts .java .go</span>
+          <span class="pii-guide-chip scan">.env .conf .ini .yml</span>
+          <span class="pii-guide-chip scan">.sql .html .log</span>
+
+        </div>
+      </div>
     </div>
     <div class="sb-input-group">
       <label class="sb-label">보고서 형식</label>
@@ -796,7 +879,10 @@ async function startScan() {
   const fmt     = document.getElementById('reportFmt').value;
 
   const body = { target, report_format: fmt };
-  if (piiDir) body.pii_dirs = [piiDir];
+  if (piiDir) {
+    // 콤마로 구분된 여러 경로 지원
+    body.pii_dirs = piiDir.split(',').map(p => p.trim()).filter(p => p.length > 0);
+  }
 
   try {
     const r = await fetch('/api/scan/start', {
@@ -980,6 +1066,12 @@ function setBtnRunning(running) {
 function checkPiiDirVisibility() {
   const piiEnabled = S.modStates['pii'];
   document.getElementById('piiDirGroup').style.display = piiEnabled ? '' : 'none';
+  document.getElementById('piiGuide').style.display    = piiEnabled ? '' : 'none';
+}
+
+function togglePiiGuide(hd) {
+  hd.classList.toggle('open');
+  document.getElementById('piiGuideBd').classList.toggle('open');
 }
 
 // ── 터미널 ───────────────────────────────────────────────

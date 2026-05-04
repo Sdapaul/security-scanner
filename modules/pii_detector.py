@@ -6,11 +6,15 @@
 """
 import os
 import re
+import time
 from datetime import datetime
 
 from config.settings import PII_PATTERNS, PII_SCAN_EXTENSIONS, PII_MAX_FILE_SIZE
 
 MODULE = 'pii'
+
+MAX_SCAN_FILES   = 5_000   # 파일 수 상한
+MAX_SCAN_SECONDS = 300     # 시간 상한 (5분)
 
 _COMPILED = {
     key: (re.compile(pattern), sev, label)
@@ -22,9 +26,11 @@ SKIP_DIRS = {
     # 개발 패키지
     'node_modules', '__pycache__', '.git', '.svn', '.hg',
     'venv', 'env', '.env', 'site-packages', 'dist', 'build',
-    # Windows 시스템
+    # Windows 시스템 / C:\ 루트 불필요 디렉터리
     'Windows', 'Program Files', 'Program Files (x86)',
     'ProgramData', 'System32', 'SysWOW64', 'WinSxS', 'WinSXS',
+    'Recovery', 'PerfLogs', '$Recycle.Bin', '$WinREAgent',
+    'Intel', 'AMD', 'NVIDIA', 'KIOXIA', 'SamsungMagician',
     # Electron/Chromium 캐시 (수백만 개 바이너리)
     'Cache', 'Caches', 'CacheStorage', 'Code Cache', 'cache',
     'GPUCache', 'ShaderCache', 'DawnCache', 'DawnWebGPUCache',
@@ -40,6 +46,10 @@ SKIP_DIRS = {
     'Spotify', 'Discord', 'Slack', 'Teams', 'OneDrive',
     'Microsoft Edge', 'Google', 'chrome', 'Firefox',
     'steam', 'Steam', 'EpicGamesLauncher',
+    'Zoom', 'zoom', 'Uninstall', 'Installer',
+    'KakaoTalk', 'kakaotalk', 'NAVER', 'naver',
+    'obs-studio', 'OBS Studio', 'Wondershare',
+    'Adobe', 'Autodesk', 'JetBrains', 'Postman',
     # Claude / VS Code 관련
     'extensions', 'workspaceStorage', 'globalStorage',
 }
@@ -51,7 +61,18 @@ SKIP_PATH_KEYWORDS = (
     'AppData\\Local\\Programs',       # 사용자 설치 앱 바이너리·문서 (Python, Node 등)
     'AppData\\Local\\Microsoft\\Windows',
     'AppData\\LocalLow',
+    # AppData\Roaming 하위 대형 앱 디렉토리 (앱 바이너리·캐시, PII 없음)
     'AppData\\Roaming\\npm',
+    'AppData\\Roaming\\Zoom',
+    'AppData\\Roaming\\discord',
+    'AppData\\Roaming\\Discord',
+    'AppData\\Roaming\\Slack',
+    'AppData\\Roaming\\Code',
+    'AppData\\Roaming\\Cursor',
+    'AppData\\Roaming\\Microsoft\\Windows',
+    'AppData\\Roaming\\Microsoft\\Office',
+    'AppData\\Roaming\\KakaoTalk',
+    'AppData\\Roaming\\obs-studio',
     'claude-cli-nodejs',
     'cloud-code',
     '.vscode',
@@ -229,6 +250,7 @@ def scan(scan_dirs: list[str]) -> list[dict]:
     scanned_files  = 0
     pii_found      = 0
     stopped        = False
+    t0             = time.time()
 
     for base_dir in scan_dirs:
         if not os.path.isdir(base_dir):
@@ -261,6 +283,16 @@ def scan(scan_dirs: list[str]) -> list[dict]:
 
                 fpath = os.path.join(dirpath, fname)
                 scanned_files += 1
+
+                if scanned_files >= MAX_SCAN_FILES:
+                    print(f'  -> [PII] 최대 스캔 파일 수({MAX_SCAN_FILES:,}개) 도달, 스캔 중단.')
+                    stopped = True
+                    break
+                if scanned_files % 50 == 0 and (time.time() - t0) > MAX_SCAN_SECONDS:
+                    print(f'  -> [PII] 최대 스캔 시간({MAX_SCAN_SECONDS}초) 초과, 스캔 중단.')
+                    stopped = True
+                    break
+
                 if scanned_files == 1 or scanned_files % 5 == 0:
                     _emit_progress(fpath, scanned_files, scanned_files)
 
